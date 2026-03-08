@@ -37,7 +37,7 @@ generate: $(VMLINUX)
 		NetworkTracker $(BPF_SRC)
 
 $(VMLINUX):
-	$(shell which bpftool || echo /usr/bin/bpftool) btf dump file /sys/kernel/btf/vmlinux format c > $@
+	bpftool btf dump file /sys/kernel/btf/vmlinux format c > $@
 
 # Build the Go binary.  Requires that `generate` has been run at least once
 # for the target architecture.
