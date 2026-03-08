@@ -2,10 +2,10 @@ all:
   children:
     ebpf_monitored:
       hosts:
-        jupiter:
-          ansible_host: 192.168.1.101
-          ansible_port: 2222
-          ansible_user: elw
-        k3s-server:
-          ansible_host: 192.168.1.58
-          ansible_user: elw
+        myserver:
+          ansible_host: 192.168.1.10
+          ansible_user: myuser
+        # myserver2:
+        #   ansible_host: 192.168.1.11
+        #   ansible_port: 2222
+        #   ansible_user: myuser

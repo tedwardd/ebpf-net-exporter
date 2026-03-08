@@ -1,4 +1,4 @@
-module ebpf-net-exporter
+module github.com/tedwardd/ebpf-net-exporter
 
 go 1.22
 
