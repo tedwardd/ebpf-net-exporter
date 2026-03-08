@@ -8,6 +8,7 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - runs-on: ubuntu-latest
@@ -43,11 +44,25 @@ jobs:
           sudo chmod +x /usr/local/bin/bpftool
           bpftool version
 
-      # Generate vmlinux.h from this runner's kernel BTF and compile the BPF C
-      # for the native architecture.  Each runner produces its own arch-specific
-      # stub (networktracker_x86_bpfel.go or networktracker_arm64bpfel.go).
-      - name: Generate BPF stubs
-        run: make generate
+      - name: Generate vmlinux.h
+        run: |
+          echo "=== BTF availability ==="
+          ls -la /sys/kernel/btf/vmlinux || echo "BTF file not found!"
+          echo "=== Generating vmlinux.h ==="
+          bpftool btf dump file /sys/kernel/btf/vmlinux format c > bpf/vmlinux.h
+          echo "=== vmlinux.h size ==="
+          wc -l bpf/vmlinux.h
+
+      - name: Compile BPF stubs
+        run: |
+          echo "=== clang version ==="
+          clang --version
+          echo "=== Compiling BPF C ==="
+          GOPACKAGE=main go run github.com/cilium/ebpf/cmd/bpf2go \
+            -cc clang \
+            -target $(go env GOARCH) \
+            -cflags "-O2 -g -Wall" \
+            NetworkTracker bpf/network_tracker.bpf.c
 
       - name: Build
         run: CGO_ENABLED=0 go build -ldflags="-s -w" -o ${{ matrix.artifact }} .
