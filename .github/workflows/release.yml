@@ -61,7 +61,7 @@ jobs:
           GOPACKAGE=main go run github.com/cilium/ebpf/cmd/bpf2go \
             -cc clang \
             -target $(go env GOARCH) \
-            -cflags "-O2 -g -Wall" \
+            -cflags "-O2 -g -Wall -Werror" \
             NetworkTracker bpf/network_tracker.bpf.c
 
       - name: Build
