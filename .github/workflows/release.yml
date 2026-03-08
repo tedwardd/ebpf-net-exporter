@@ -30,12 +30,17 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y clang libbpf-dev linux-tools-common linux-tools-generic
-          # The versioned bpftool binary lives under /usr/lib/linux-tools/<kernel>/.
-          # Find it wherever it was installed and symlink to a fixed PATH location.
-          BPFTOOL=$(find /usr/lib/linux-tools -name bpftool -type f 2>/dev/null | head -1)
-          echo "Found bpftool at: $BPFTOOL"
-          sudo ln -sf "$BPFTOOL" /usr/local/bin/bpftool
+          sudo apt-get install -y clang libbpf-dev
+
+      - name: Install bpftool
+        run: |
+          # Use a pre-built static binary from the libbpf/bpftool releases.
+          # This avoids the fragile linux-tools-$(uname -r) package dance.
+          ARCH=$(dpkg --print-architecture)   # amd64 or arm64
+          VER=v7.6.0
+          URL="https://github.com/libbpf/bpftool/releases/download/${VER}/bpftool-${VER}-${ARCH}.tar.gz"
+          curl -sL "$URL" | sudo tar -xzf - -C /usr/local/bin bpftool
+          sudo chmod +x /usr/local/bin/bpftool
           bpftool version
 
       # Generate vmlinux.h from this runner's kernel BTF and compile the BPF C
