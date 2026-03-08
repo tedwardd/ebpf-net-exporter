@@ -15,10 +15,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// go:generate runs bpf2go which compiles the eBPF C code and embeds it as a
-// Go byte array.  Run `make generate` (requires clang + bpftool on build host).
-//
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -target amd64 -cflags "-O2 -g -Wall -Werror" NetworkTracker ./bpf/network_tracker.bpf.c
+// BPF stubs are generated via `make generate`, which detects the native arch
+// and calls bpf2go accordingly.  See the Makefile for details.
 
 func main() {
 	addr := flag.String("addr", ":9102", "address to listen on")

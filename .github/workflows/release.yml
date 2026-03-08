@@ -6,7 +6,48 @@ on:
       - main
 
 jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runs-on: ubuntu-latest
+            goarch: amd64
+            artifact: ebpf-net-exporter-linux-amd64
+          - runs-on: ubuntu-24.04-arm
+            goarch: arm64
+            artifact: ebpf-net-exporter-linux-arm64
+
+    runs-on: ${{ matrix.runs-on }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y clang libbpf-dev bpftool
+
+      # Generate vmlinux.h from this runner's kernel BTF and compile the BPF C
+      # for the native architecture.  Each runner produces its own arch-specific
+      # stub (networktracker_x86_bpfel.go or networktracker_arm64bpfel.go).
+      - name: Generate BPF stubs
+        run: make generate
+
+      - name: Build
+        run: CGO_ENABLED=0 go build -ldflags="-s -w" -o ${{ matrix.artifact }} .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
   release:
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -16,19 +57,16 @@ jobs:
         with:
           fetch-depth: 0  # required to see all existing tags
 
-      - uses: actions/setup-go@v5
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
         with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Build
-        run: CGO_ENABLED=0 go build -ldflags="-s -w" -o ebpf-net-exporter-linux-amd64 .
+          merge-multiple: true  # place all binaries flat in the working directory
 
       - name: Determine version
         id: version
         run: |
           DATE=$(date -u +%Y%m%d)
-          # Find the highest numeric suffix already used for today
+          git fetch --tags
           LATEST=$(git tag -l "${DATE}.*" | sort -t. -k2 -rn | head -1)
           if [ -z "$LATEST" ]; then
             SUFFIX=0
@@ -47,4 +85,5 @@ jobs:
             --prerelease \
             --generate-notes \
             --title "${{ steps.version.outputs.tag }}" \
-            ebpf-net-exporter-linux-amd64
+            ebpf-net-exporter-linux-amd64 \
+            ebpf-net-exporter-linux-arm64

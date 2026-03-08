@@ -7,7 +7,7 @@
 #       Ubuntu: apt install clang
 #   - bpftool   (used once to generate bpf/vmlinux.h)
 #       Arch:   pacman -S bpf
-#       Ubuntu: apt install linux-tools-common linux-tools-$(uname -r)
+#       Ubuntu: apt install bpftool
 #   - libbpf headers
 #       Arch:   pacman -S libbpf
 #       Ubuntu: apt install libbpf-dev
@@ -19,21 +19,28 @@
 BINARY   := ebpf-net-exporter
 BPF_SRC  := bpf/network_tracker.bpf.c
 VMLINUX  := bpf/vmlinux.h
+ARCH     := $(shell go env GOARCH)
 ANSIBLE  := ansible-playbook -i ansible/inventory.yml ansible/playbook.yml
 
 .PHONY: all generate build deploy dry-run clean
 
 all: generate build
 
-# Generate vmlinux.h from the running kernel's BTF data, then run bpf2go to
-# compile the eBPF C and produce the Go embedding stubs.
+# Generate vmlinux.h from the running kernel's BTF, then compile the eBPF C
+# for the native architecture using bpf2go.  Output file names encode the
+# arch so amd64 and arm64 stubs can coexist in the same tree.
 generate: $(VMLINUX)
-	go generate ./...
+	GOPACKAGE=main go run github.com/cilium/ebpf/cmd/bpf2go \
+		-cc clang \
+		-target $(ARCH) \
+		-cflags "-O2 -g -Wall -Werror" \
+		NetworkTracker $(BPF_SRC)
 
 $(VMLINUX):
 	$(shell which bpftool || echo /usr/bin/bpftool) btf dump file /sys/kernel/btf/vmlinux format c > $@
 
-# Build the Go binary.  Requires that `generate` has been run at least once.
+# Build the Go binary.  Requires that `generate` has been run at least once
+# for the target architecture.
 build:
 	CGO_ENABLED=0 go build -o $(BINARY) .
 
