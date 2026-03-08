@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -20,9 +21,18 @@ import (
 // BPF stubs are generated via `make generate`, which detects the native arch
 // and calls bpf2go accordingly.  See the Makefile for details.
 
+// version is overridden at build time via -ldflags "-X main.version=<tag>".
+var version = "dev"
+
 func main() {
 	addr := flag.String("addr", ":9102", "address to listen on")
+	versionFlag := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Println(version)
+		return
+	}
 
 	// Needed on kernels < 5.11 to allow locking memory for BPF maps.
 	if err := rlimit.RemoveMemlock(); err != nil {
