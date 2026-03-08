@@ -1,3 +1,2 @@
 ebpf-net-exporter
 bpf/vmlinux.h
-networktracker_*.o
