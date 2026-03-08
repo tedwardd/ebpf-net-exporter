@@ -1,0 +1,118 @@
+package main
+
+import (
+	"flag"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
+	"github.com/cilium/ebpf/rlimit"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+// go:generate runs bpf2go which compiles the eBPF C code and embeds it as a
+// Go byte array.  Run `make generate` (requires clang + bpftool on build host).
+//
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -target amd64 -cflags "-O2 -g -Wall -Werror" NetworkTracker ./bpf/network_tracker.bpf.c
+
+func main() {
+	addr := flag.String("addr", ":9102", "address to listen on")
+	flag.Parse()
+
+	// Needed on kernels < 5.11 to allow locking memory for BPF maps.
+	if err := rlimit.RemoveMemlock(); err != nil {
+		log.Fatalf("removing memlock limit: %v", err)
+	}
+
+	objs := NetworkTrackerObjects{}
+	if err := LoadNetworkTrackerObjects(&objs, nil); err != nil {
+		log.Fatalf("loading BPF objects: %v", err)
+	}
+	defer objs.Close()
+
+	links, err := attachProbes(&objs)
+	if err != nil {
+		log.Fatalf("attaching kprobes: %v", err)
+	}
+	defer closeLinks(links)
+
+	prometheus.MustRegister(NewCollector(objs.NetStats))
+
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	srv := &http.Server{Addr: *addr, Handler: mux}
+
+	go func() {
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
+		<-ch
+		srv.Close()
+	}()
+
+	log.Printf("ebpf-net-exporter listening on %s", *addr)
+	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+		log.Fatalf("HTTP server: %v", err)
+	}
+}
+
+// attachProbes attaches all kprobes and kretprobes.  Optional probes (those
+// that may not exist on all kernels) are attached on a best-effort basis and
+// their absence is only logged.
+func attachProbes(objs *NetworkTrackerObjects) ([]link.Link, error) {
+	var links []link.Link
+
+	kprobe := func(symbol string, prog *ebpf.Program) error {
+		l, err := link.Kprobe(symbol, prog, nil)
+		if err != nil {
+			return err
+		}
+		links = append(links, l)
+		return nil
+	}
+
+	kretprobe := func(symbol string, prog *ebpf.Program) error {
+		l, err := link.Kretprobe(symbol, prog, nil)
+		if err != nil {
+			return err
+		}
+		links = append(links, l)
+		return nil
+	}
+
+	// Required probes — fatal if unavailable.
+	required := []func() error{
+		func() error { return kprobe("tcp_sendmsg", objs.KprobeTcpSendmsg) },
+		func() error { return kprobe("tcp_cleanup_rbuf", objs.KprobeTcpCleanupRbuf) },
+		func() error { return kprobe("udp_sendmsg", objs.KprobeUdpSendmsg) },
+		func() error { return kprobe("udp_recvmsg", objs.KprobeUdpRecvmsg) },
+		func() error { return kretprobe("udp_recvmsg", objs.KretprobeUdpRecvmsg) },
+	}
+	for _, fn := range required {
+		if err := fn(); err != nil {
+			closeLinks(links)
+			return nil, err
+		}
+	}
+
+	// Optional — attached if the kernel symbol exists.
+	if err := kprobe("udpv6_sendmsg", objs.KprobeUdpv6Sendmsg); err != nil {
+		log.Printf("optional probe udpv6_sendmsg not attached: %v", err)
+	}
+
+	return links, nil
+}
+
+func closeLinks(links []link.Link) {
+	for _, l := range links {
+		l.Close()
+	}
+}

@@ -1,0 +1,5 @@
+---
+- hosts: ebpf_monitored
+  become: true
+  roles:
+    - ebpf-net-exporter
