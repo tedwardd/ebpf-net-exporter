@@ -112,8 +112,12 @@ func protoLabel(proto uint8) string {
 }
 
 func dirLabel(dir uint8) string {
-	if dir == dirRX {
+	switch dir {
+	case dirRX:
 		return "rx"
+	case dirTX:
+		return "tx"
+	default:
+		return fmt.Sprintf("dir%d", dir)
 	}
-	return "tx"
 }

@@ -22,6 +22,13 @@ struct net_key_t {
 
 // Per-CPU hash map: avoids atomic operations on the hot path.
 // Userspace sums across CPUs when reading.
+//
+// Capacity: each unique (comm, ifindex, proto, direction) tuple occupies one
+// entry.  10240 accommodates ~640 distinct processes × 2 protocols × 2
+// directions × ~4 interfaces with room to spare on typical hosts.  If the map
+// fills, new tuples are silently dropped (existing counters continue to
+// accumulate correctly).  Increase max_entries and recompile if you see
+// truncated process coverage on a very busy host.
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_HASH);
 	__type(key, struct net_key_t);
