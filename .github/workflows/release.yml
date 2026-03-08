@@ -30,7 +30,13 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y clang libbpf-dev bpftool
+          sudo apt-get install -y clang libbpf-dev
+          # bpftool on Ubuntu lives in linux-tools-$(uname -r); fall back to
+          # linux-tools-generic if the kernel-specific package isn't available.
+          sudo apt-get install -y linux-tools-$(uname -r) linux-tools-common 2>/dev/null \
+            || sudo apt-get install -y linux-tools-generic linux-tools-common
+          # Ensure bpftool is on PATH regardless of which package provided it.
+          echo "/usr/lib/linux-tools/$(uname -r)" >> "$GITHUB_PATH"
 
       # Generate vmlinux.h from this runner's kernel BTF and compile the BPF C
       # for the native architecture.  Each runner produces its own arch-specific

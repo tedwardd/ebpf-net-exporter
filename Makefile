@@ -7,7 +7,7 @@
 #       Ubuntu: apt install clang
 #   - bpftool   (used once to generate bpf/vmlinux.h)
 #       Arch:   pacman -S bpf
-#       Ubuntu: apt install bpftool
+#       Ubuntu: apt install linux-tools-$(uname -r) linux-tools-common
 #   - libbpf headers
 #       Arch:   pacman -S libbpf
 #       Ubuntu: apt install libbpf-dev
